@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Dependency check
+DEPS="curl nmap nping hping3 openssl netcat stunnel whois host nslookup"
+for cmd in $DEPS; do
+  if ! command -v $cmd &> /dev/null; then
+    echo -e "\e[1;31mError: Required command '$cmd' is not installed.\e[0m" >&2
+    echo "Please install it and try again." >&2
+    exit 1
+  fi
+done
+
 
 #WARNA KESUKAAN
 
@@ -132,7 +142,7 @@ showip()
 {		echo "External IP lookup uses curl..."
 		echo "External IP is detected as:"
 #use curl to lookup external IP
-		curl http://canihazip.com/s/
+		curl -s https://ifconfig.me/ip
 		echo ""
 		echo ""
 #show interface IP's
@@ -332,7 +342,7 @@ dosmenu()
 ##START TCPSYNFLOOD##
 synflood()
 {		echo "TCP SYN Flood uses hping3...checking for hping3..."
-	if test -f "/usr/sbin/hping3"; then echo "hping3 found, continuing!";
+	if command -v hping3 >/dev/null; then echo "hping3 found, continuing!";
 #hping3 is found, so use that for TCP SYN Flood
 		echo "Enter target:"
 #need a target IP/hostname
@@ -434,7 +444,7 @@ PORT=80 && echo "Invalid port chosen! Reverting to port 80"
 ##START TCPACKFLOOD##
 ackflood()
 {		echo "TCP ACK Flood uses hping3...checking for hping3..."
-	if test -f "/usr/sbin/hping3"; then echo "hping3 found, continuing!";
+	if command -v hping3 >/dev/null; then echo "hping3 found, continuing!";
 #hping3 is found, so use that for TCP ACK Flood
 		echo "Enter target:"
 #need a target IP/hostname
@@ -536,7 +546,7 @@ PORT=80 && echo "Invalid port chosen! Reverting to port 80"
 ##START TCPRSTFLOOD##
 rstflood()
 {		echo "TCP RST Flood uses hping3...checking for hping3..."
-	if test -f "/usr/sbin/hping3"; then echo "hping3 found, continuing!";
+	if command -v hping3 >/dev/null; then echo "hping3 found, continuing!";
 #hping3 is found, so use that for TCP RST Flood
 		echo "Enter target:"
 #need a target IP/hostname
@@ -959,7 +969,7 @@ if [ "$PROTO" != "t" ] && [ "$PROTO" != "u" ]; then
 fi
 #show listening ports on system using ss (if available) otherwise use netstat
 	echo "Listing current listening ports on this system.  Do not attempt to create a listener on one of these ports, it will not work." && echo ""
-if test -f "/bin/ss"; then
+if command -v ss >/dev/null; then
 	LISTPORT=ss;
 	else LISTPORT=netstat
 
@@ -1031,20 +1041,12 @@ stunnel_client()
 { echo "use SSL/TLS? [y]es or [n]o (default):"
 	read SSL
 	: ${SSL:=n}
-#if not using SSL/TLS, carry on what we were doing
-#otherwise create an SSL/TLS tunnel using a local listener on TCP port 9991
 if [[ "$SSL" = "y" ]]
 	then echo "Using SSL/TLS"
 LHOST=127.0.0.1
 LPORT=9991
-#ascertain if stunnel is defined in /etc/services and if not, add it & set permissions correctly
-grep -q $LPORT /etc/services
-if [[ $? = 1 ]]
-then
-echo "Adding pentmenu stunnel service to /etc/services" && sudo chmod 777 /etc/services && sudo echo "pentmenu-stunnel-client 9991/tcp #pentmenu stunnel client listener" >> /etc/services &&  sudo chmod 644 /etc/services
-fi
 #is ss is available, use that to shoew listening ports
-if test -f "/bin/ss"; then
+if command -v ss >/dev/null; then
 	LISTPORT=ss;
 #otherwise use netstat
 	else LISTPORT=netstat
@@ -1054,16 +1056,14 @@ $LISTPORT -tln |grep -q $LPORT
 if [[ "$?" = "1" ]]
 #if nothing is running on port 9991, create stunnel configuration
 then
-	echo "Creating stunnel client on $LHOST:$LPORT"
-		sudo rm -f /etc/stunnel/pentmenu.conf;
-		sudo touch /etc/stunnel/pentmenu.conf && sudo chmod 777 /etc/stunnel/pentmenu.conf
-		sudo echo "[PENTMENU-CLIENT]" >> /etc/stunnel/pentmenu.conf
-		sudo echo "client=yes" >> /etc/stunnel/pentmenu.conf
-		sudo echo "accept=$LHOST:$LPORT" >> /etc/stunnel/pentmenu.conf
-		sudo echo "connect=$TARGET:$PORT" >> /etc/stunnel/pentmenu.conf
-		sudo echo "verify=0" >> /etc/stunnel/pentmenu.conf
-		sudo chmod 644 /etc/stunnel/pentmenu.conf
-		sudo stunnel /etc/stunnel/pentmenu.conf && sleep 1
+	STUNNEL_CONF=$(mktemp)
+	echo "Creating stunnel client on $LHOST:$LPORT using temporary config $STUNNEL_CONF"
+		echo "[PENTMENU-CLIENT]" >> $STUNNEL_CONF
+		echo "client=yes" >> $STUNNEL_CONF
+		echo "accept=$LHOST:$LPORT" >> $STUNNEL_CONF
+		echo "connect=$TARGET:$PORT" >> $STUNNEL_CONF
+		echo "verify=0" >> $STUNNEL_CONF
+		sudo stunnel $STUNNEL_CONF && sleep 1
 #if stunnel listener is already active we don't bother recreating it
 else echo "Looks like stunnel is already listening on port 9991, so not recreating"
 fi
